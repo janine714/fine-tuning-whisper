@@ -105,7 +105,7 @@ training_args = Seq2SeqTrainingArguments(
     load_best_model_at_end=True,
     metric_for_best_model="wer",
     greater_is_better=False,
-    evaluation_strategy="steps",  # Add this line
+    evaluation_strategy="steps", 
 )
 
 
