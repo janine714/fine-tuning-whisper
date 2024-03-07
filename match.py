@@ -1,78 +1,49 @@
+from transformers import pipeline
+from datasets import load_dataset
 import os
 import pandas as pd
 import torch
-from transformers import AutoModelForSpeechSeq2Seq, AutoProcessor, pipeline
-from datasets import load_dataset
-from transformers import WhisperForConditionalGeneration, WhisperTokenizer, WhisperFeatureExtractor, WhisperProcessor
 
 cache_dir = "/proj/uppmax2024-2-2/tswa2641/huggingface"
 os.environ["TRANSFORMERS_CACHE"] = cache_dir
 
-device = "cuda:0" if torch.cuda.is_available() else "cpu"
-torch_dtype = torch.float16 if torch.cuda.is_available() else torch.float32
-
-
-model_id = "openai/whisper-large-v3"
-
-# Initialize the model
-model = WhisperForConditionalGeneration.from_pretrained(model_id)
-
-# Initialize the tokenizer
-tokenizer_sv = WhisperTokenizer.from_pretrained("openai/whisper-large-v3", language="Swedish", task="transcribe")
-
-# Initialize the feature extractor
-feature_extractor_sv = WhisperFeatureExtractor.from_pretrained("openai/whisper-large-v3", language="Swedish", task="transcribe")
-
-# Initialize the processor
-processor_sv = WhisperProcessor(feature_extractor=feature_extractor_sv, tokenizer=tokenizer_sv)
-
-# Initialize the model
-model = AutoModelForSpeechSeq2Seq.from_pretrained(
-    model_id, torch_dtype=torch_dtype, low_cpu_mem_usage=True, use_safetensors=True
-)
-model.to(device)
-
-# Initialize the processor
-processor = AutoProcessor.from_pretrained(model_id)
-
-# Create the ASR pipeline
-pipe = pipeline(
-    "automatic-speech-recognition",
-    model=model,
-    tokenizer=processor.tokenizer,
-    feature_extractor=processor.feature_extractor,
-    max_new_tokens=128,
-    chunk_length_s=30,
-    batch_size=16,
-    return_timestamps=True,
-    torch_dtype=torch_dtype,
-    device=device,
-)
-
 # Load the dataset
 dataset = load_dataset("KTH/nst", "speech", download_mode="reuse_dataset_if_exists", split="train[:20000]")
 
+# Initialize ASR pipeline
+pipe = pipeline(
+    "automatic-speech-recognition",
+    model="openai/whisper-large-v3",
+    device=-1,  # Use CPU
+)
+
 # Initialize match list
 match = []
-
 # Generate transcriptions for the audio data
 predictions = []
 references = []
 
+# Access the 'text' field from the main dataset
+reference_text = dataset["text"]
+
 for audio in dataset["audio"]:
-    result = pipe(audio)
-    if result and isinstance(result[0], dict) and 'text' in result[0]:
+    audio_tensor = torch.tensor(audio["array"], dtype=torch.float32)  # Convert audio to tensor
+    audio_array = audio_tensor.cpu().detach().numpy()  # Convert torch tensor to numpy ndarray
+
+    result = pipe(audio_array)  # Pass numpy ndarray to the pipeline
+
+    if result and isinstance(result, list) and result[0] and isinstance(result[0], dict) and 'text' in result[0]:
         predicted_transcription = result[0]['text']
         predictions.append(predicted_transcription)
-        references.append(audio["text"])
-        if predicted_transcription == audio["text"]:
+        references.append(reference_text)  # Use the 'text' field from the main dataset
+        if predicted_transcription == reference_text:
             match.append(1)  # Append 1 if prediction matches reference
         else:
             match.append(0)  # Append 0 if prediction doesn't match reference
     else:
         print("No transcription generated for this audio.")
         predictions.append(None)
-        references.append(audio["text"])
+        references.append(reference_text)  # Use the 'text' field from the main dataset
         match.append(0)  # Assuming no transcription means it doesn't match
 
 # Create a Pandas DataFrame
@@ -84,4 +55,6 @@ csv_path = "/proj/uppmax2024-2-2/tswa2641/whisper_transcriptions.csv"
 df.to_csv(csv_path, index=False)
 
 print(f"CSV file saved to {csv_path} successfully")
+
+
 
