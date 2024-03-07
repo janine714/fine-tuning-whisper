@@ -6,14 +6,14 @@ from datasets import load_dataset
 
 cache_dir = "/proj/uppmax2024-2-2/tswa2641/huggingface"
 os.environ["TRANSFORMERS_CACHE"] = cache_dir
-device = "cuda:0" if torch.cuda.is_available() else "cpu"
-torch_dtype = torch.float16 if torch.cuda.is_available() else torch.float32
 
+# Define the appropriate data type and device
+torch_dtype = torch.float32  # Define the appropriate data type
+device = "cuda" if torch.cuda.is_available() else "cpu"  # Set the device (e.g., "cuda" for GPU)
 
 model_id = "openai/whisper-large-v3"
-torch_dtype = torch.float32  
-device = "cuda" 
 
+# Initialize the model
 model = AutoModelForSpeechSeq2Seq.from_pretrained(
     model_id, torch_dtype=torch_dtype, low_cpu_mem_usage=True, use_safetensors=True
 )
@@ -71,3 +71,4 @@ csv_path = "/proj/uppmax2024-2-2/tswa2641/whisper_transcriptions.csv"
 df.to_csv(csv_path, index=False)
 
 print(f"CSV file saved to {csv_path} successfully")
+
