@@ -48,7 +48,7 @@ references = []
 
 for audio in dataset["audio"]:
     result = pipe(audio)
-    if result:
+    if result and isinstance(result[0], dict) and 'text' in result[0]:
         predicted_transcription = result[0]['text']
         predictions.append(predicted_transcription)
         references.append(audio["text"])
