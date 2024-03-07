@@ -3,6 +3,7 @@ import pandas as pd
 import torch
 from transformers import AutoModelForSpeechSeq2Seq, AutoProcessor, pipeline
 from datasets import load_dataset
+from transformers import WhisperForConditionalGeneration, WhisperTokenizer, WhisperFeatureExtractor, WhisperProcessor
 
 cache_dir = "/proj/uppmax2024-2-2/tswa2641/huggingface"
 os.environ["TRANSFORMERS_CACHE"] = cache_dir
@@ -10,7 +11,20 @@ os.environ["TRANSFORMERS_CACHE"] = cache_dir
 device = "cuda:0" if torch.cuda.is_available() else "cpu"
 torch_dtype = torch.float16 if torch.cuda.is_available() else torch.float32
 
+
 model_id = "openai/whisper-large-v3"
+
+# Initialize the model
+model = WhisperForConditionalGeneration.from_pretrained(model_id)
+
+# Initialize the tokenizer
+tokenizer_sv = WhisperTokenizer.from_pretrained("openai/whisper-large-v3", language="Swedish", task="transcribe")
+
+# Initialize the feature extractor
+feature_extractor_sv = WhisperFeatureExtractor.from_pretrained("openai/whisper-large-v3", language="Swedish", task="transcribe")
+
+# Initialize the processor
+processor_sv = WhisperProcessor(feature_extractor=feature_extractor_sv, tokenizer=tokenizer_sv)
 
 # Initialize the model
 model = AutoModelForSpeechSeq2Seq.from_pretrained(
