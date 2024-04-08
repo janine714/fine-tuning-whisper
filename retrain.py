@@ -1,13 +1,9 @@
-import os
 import pandas as pd
 import torch
 import librosa
 from transformers import WhisperForConditionalGeneration, WhisperProcessor
 from pathlib import Path
 from jiwer import wer, cer 
-
-cache_dir = "/proj/uppmax2024-2-2/tswa2641/huggingface"
-os.environ["TRANSFORMERS_CACHE"] = cache_dir
 
 # Model and processor setup
 base_dir = "/proj/uppmax2024-2-2/tswa2641/results/whisper-small-multi"
