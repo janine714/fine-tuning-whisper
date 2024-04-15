@@ -40,7 +40,7 @@ combined_train_datasets = concatenate_datasets(combined_datasets)
 combined_train_datasets = combined_train_datasets.shuffle(seed=42)
 
 
-languages = ["sv", "de", "ru", "lt”, “pl”]
+languages = ["sv", "de", "ru", "lt", "pl"]
 cv_validation_datasets = []
 for lang in languages:
     cv_dataset = load_dataset("mozilla-foundation/common_voice_13_0", lang, split="validation[:225]", cache_dir=cache_dir)  # Adjusted to validation split
