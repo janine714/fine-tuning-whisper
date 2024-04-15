@@ -46,27 +46,39 @@ def evaluate_on_fleurs(model, processor, languages, sample_size):
         avg_cer = total_cer / sample_size
         print(f"FLEURS - Language: {language_code} - Sample Size: {sample_size} - Average WER: {avg_wer}, Average CER: {avg_cer}")
 
-def evaluate_training_set(model, processor, data, sample_size):
-    total_wer, total_cer = 0, 0
-    model.eval()
-    with torch.no_grad():
-        for idx, row in data.iterrows():
-            audio = prepare_audio_file(row['file_path'])
-            features = processor(audio, sampling_rate=16000, return_tensors="pt").input_features.cuda()
-            predicted_ids = model.generate(features)
-            hypothesis = processor.decode(predicted_ids[0], skip_special_tokens=True)
-            reference = row['reference']
-            total_wer += wer(reference, hypothesis)
-            total_cer += cer(reference, hypothesis)
-            if idx >= sample_size - 1:
-                break
+def evaluate_on_common_voice(model, processor, languages, sample_size):
+    for language_code in languages:
+        dataset_name = "mozilla-foundation/common_voice_13_0"
+        try:
+            dataset = load_dataset(dataset_name, language_code, split=f"test[:5000]", download_mode="reuse_dataset_if_exists")
+        except Exception as e:
+            print(f"Skipping {language_code} for {dataset_name} due to error: {e}")
+            continue
+        subset = dataset.shuffle(seed=42).select(range(sample_size))
+        total_wer, total_cer = 0, 0
 
-    avg_wer = total_wer / sample_size
-    avg_cer = total_cer / sample_size
-    print(f"TRAINING SET - Sample Size: {sample_size} - Average WER: {avg_wer}, Average CER: {avg_cer}")
+        model.eval()
+        with torch.no_grad():
+            for data_item in subset:
+                audio_data = data_item["audio"]["array"]
+                sampling_rate = data_item["audio"]["sampling_rate"]
+                audio = prepare_audio_file(audio_data, sampling_rate)
+                features = processor(audio, sampling_rate=16000, return_tensors="pt").input_features.cuda()
+
+                predicted_ids = model.generate(features)
+                hypothesis = processor.decode(predicted_ids[0], skip_special_tokens=True)
+                reference = data_item["sentence"]
+                total_wer += wer(reference, hypothesis)
+                total_cer += cer(reference, hypothesis)
+
+        avg_wer = total_wer / sample_size
+        avg_cer = total_cer / sample_size
+        print(f"{dataset_name.upper()} - Language: {language_code} - Sample Size: {sample_size} - Average WER: {avg_wer}, Average CER: {avg_cer}")
+
 
 def train_and_evaluate(csv_path, sample_sizes=[100, 500, 1000]):
     df = pd.read_csv(csv_path)
+    common_voice_languages = ["de", "sv-SE", "lt", "pl", "ru"]  
     fleurs_languages = ["de_de", "sv_se", "lt_lt", "pl_pl", "ru_ru"]  
 
     for size in sample_sizes:
@@ -89,8 +101,7 @@ def train_and_evaluate(csv_path, sample_sizes=[100, 500, 1000]):
         scheduler.step()
         
         evaluate_on_fleurs(model, processor, fleurs_languages, size)
-
-        evaluate_training_set(model, processor, sample_df, size)
+        evaluate_on_common_voice(model, processor, common_voice_languages, size)
 
 
 csv_path_de = "/proj/uppmax2024-2-2/tswa2641/de_whisper_transcriptions.csv"
