@@ -1,15 +1,20 @@
+import os
 import pandas as pd
 import torch
 import librosa
 from transformers import WhisperForConditionalGeneration, WhisperProcessor
+from datasets import load_dataset
 from pathlib import Path
-from jiwer import wer, cer 
+from torch.optim.lr_scheduler import StepLR
+from jiwer import wer, cer
 
-# Model and processor setup
-base_dir = "/proj/uppmax2024-2-2/tswa2641/results/whisper-small-multi"
-model_checkpoint = f"{base_dir}/checkpoint-4000"
+
+cache_dir = "/proj/uppmax2024-2-2/tswa2641/huggingface"
+os.environ["TRANSFORMERS_CACHE"] = cache_dir
+
+model_checkpoint = "openai/whisper-large"
 model = WhisperForConditionalGeneration.from_pretrained(model_checkpoint).cuda()
-processor = WhisperProcessor.from_pretrained(base_dir)
+processor = WhisperProcessor.from_pretrained(model_checkpoint)
 
 def prepare_audio_file(file_path, target_sr=16000):
     audio, sr = librosa.load(file_path, sr=None)
@@ -17,26 +22,63 @@ def prepare_audio_file(file_path, target_sr=16000):
         audio = librosa.resample(audio, orig_sr=sr, target_sr=target_sr)
     return audio
 
-def retrain_model(csv_path, sample_sizes=[100, 500, 1000], cer_threshold=0.2):
+def evaluate_on_fleurs(model, processor, languages, sample_size):
+    for language_code in languages:
+        dataset = load_dataset("google/fleurs", language_code, split="test[:5000]", download_mode="reuse_dataset_if_exists")
+        subset = dataset.shuffle(seed=42).select(range(sample_size))
+        total_wer, total_cer = 0, 0
+
+        model.eval()
+        with torch.no_grad():
+            for data_item in subset:
+                audio_data = data_item["audio"]["array"]
+                sampling_rate = data_item["audio"]["sampling_rate"]
+                audio = prepare_audio_file(audio_data, sampling_rate)
+                features = processor(audio, sampling_rate=16000, return_tensors="pt").input_features.cuda()
+
+                predicted_ids = model.generate(features)
+                hypothesis = processor.decode(predicted_ids[0], skip_special_tokens=True)
+                reference = data_item["transcription"]
+                total_wer += wer(reference, hypothesis)
+                total_cer += cer(reference, hypothesis)
+
+        avg_wer = total_wer / sample_size
+        avg_cer = total_cer / sample_size
+        print(f"FLEURS - Language: {language_code} - Sample Size: {sample_size} - Average WER: {avg_wer}, Average CER: {avg_cer}")
+
+def evaluate_training_set(model, processor, data, sample_size):
+    total_wer, total_cer = 0, 0
+    model.eval()
+    with torch.no_grad():
+        for idx, row in data.iterrows():
+            audio = prepare_audio_file(row['file_path'])
+            features = processor(audio, sampling_rate=16000, return_tensors="pt").input_features.cuda()
+            predicted_ids = model.generate(features)
+            hypothesis = processor.decode(predicted_ids[0], skip_special_tokens=True)
+            reference = row['reference']
+            total_wer += wer(reference, hypothesis)
+            total_cer += cer(reference, hypothesis)
+            if idx >= sample_size - 1:
+                break
+
+    avg_wer = total_wer / sample_size
+    avg_cer = total_cer / sample_size
+    print(f"TRAINING SET - Sample Size: {sample_size} - Average WER: {avg_wer}, Average CER: {avg_cer}")
+
+def train_and_evaluate(csv_path, sample_sizes=[100, 500, 1000]):
     df = pd.read_csv(csv_path)
-    # Filter samples where CER > 0.2
-    filtered_df = df[df['cer'] > cer_threshold]
+    fleurs_languages = ["de_de", "sv_se", "lt_lt", "pl_pl", "ru_ru"]  
 
     for size in sample_sizes:
-        # Randomly sample error-prone examples
-        sample_df = filtered_df.sample(n=size)
-        optimizer = torch.optim.AdamW(model.parameters(), lr=5e-5)
-
+        sample_df = df.sample(n=size)
+        optimizer = torch.optim.AdamW(model.parameters(), lr=5e-5, weight_decay=0.03)
+        scheduler = StepLR(optimizer, step_size=10, gamma=0.1)
+        
         model.train()
-        total_wer = 0
-        total_cer = 0
-        print(f"\nTraining with {size} samples:")
         for idx, row in sample_df.iterrows():
-            file_path = row['file_path']
-            audio = prepare_audio_file(file_path)
+            audio = prepare_audio_file(row['file_path'])
             features = processor(audio, sampling_rate=16000, return_tensors="pt").input_features.cuda()
-            with torch.no_grad():
-                labels = processor.tokenizer(row['reference'], return_tensors="pt").input_ids.cuda()
+            labels = processor.tokenizer(row['reference'], return_tensors="pt").input_ids.cuda()
 
             outputs = model(input_features=features, labels=labels)
             loss = outputs.loss
@@ -44,29 +86,13 @@ def retrain_model(csv_path, sample_sizes=[100, 500, 1000], cer_threshold=0.2):
             loss.backward()
             optimizer.step()
 
-            # Accumulate WER and CER
-            predicted_ids = torch.argmax(outputs.logits, dim=-1
-            hypothesis = processor.decode(predicted_ids[0], skip_special_tokens=True)
-            reference = row['reference']
-            total_wer += wer(reference, hypothesis)
-            total_cer += cer(reference, hypothesis)
+        scheduler.step()
+        
+        evaluate_on_fleurs(model, processor, fleurs_languages, size)
 
-            # Print a prediction-reference pair for each sample size
-            if idx == 0:  # print only the first pair for each sample size
-                print(f"Sample 1 for size {size}:")
-                print(f"Reference: {reference}")
-                print(f"Prediction: {hypothesis}")
-
-        avg_wer = total_wer / size
-        avg_cer = total_cer / size
-        print(f"Average WER for size {size}: {avg_wer}")
-        print(f"Average CER for size {size}: {avg_cer}")
-
-        retrained_model_path = Path(model_checkpoint).parent / f"retrained_{Path(csv_path).stem}_{size}"
-        model.save_pretrained(retrained_model_path)
-        processor.save_pretrained(retrained_model_path)
+        evaluate_training_set(model, processor, sample_df, size)
 
 
 csv_path_de = "/proj/uppmax2024-2-2/tswa2641/de_whisper_transcriptions.csv"
-retrain_model(csv_path_de)
+train_and_evaluate(csv_path_de)
 
