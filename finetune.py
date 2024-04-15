@@ -78,15 +78,15 @@ training_args = Seq2SeqTrainingArguments(
     gradient_accumulation_steps=8,  
     learning_rate=1e-5,
     warmup_steps=500,
-    num_train_epochs=1, 
-    max_steps=4000,  
+    num_train_epochs=1,
     gradient_checkpointing=False,
     fp16=True,
-    evaluation_strategy="no",
+    evaluation_strategy="steps",
+    eval_steps=3000,
     per_device_eval_batch_size=2,
     predict_with_generate=True,
     generation_max_length=225,
-    save_steps=1000,
+    save_steps=3000,
     logging_steps=25,
     report_to=["tensorboard"],
     push_to_hub=False,
@@ -96,11 +96,13 @@ training_args = Seq2SeqTrainingArguments(
 trainer = Seq2SeqTrainer(
     model=model,
     args=training_args,
-    train_dataset=combined_train_datasets,  
-    eval_dataset=cv_validation_combined,  # Use only Common Voice for validation
+    train_dataset=prepared_datasets['train'],
+    eval_dataset=prepared_datasets['test'],
     data_collator=data_collator,
     compute_metrics=compute_metrics,
-    tokenizer=processor.feature_extractor,
+    tokenizer=processor.tokenizer,  
 )
 
+
+processor.save_pretrained(training_args.output_dir)
 trainer.train()
