@@ -8,11 +8,9 @@ from torch.optim.lr_scheduler import StepLR
 from jiwer import wer, cer
 from pathlib import Path
 
-# Setup cache directory and environment
 cache_dir = "/proj/uppmax2024-2-2/tswa2641/huggingface"
 os.environ["TRANSFORMERS_CACHE"] = cache_dir
 
-# Model and processor setup using Whisper Small
 model = WhisperForConditionalGeneration.from_pretrained("openai/whisper-medium").cuda()
 processor = WhisperProcessor.from_pretrained("openai/whisper-medium")
 
@@ -45,16 +43,16 @@ def baseline_evaluation(csv_path, sample_sizes):
     for size in sample_sizes:
         sample_df = df.sample(n=size)
         evaluate(sample_df, size, "transcription", "CSV Baseline")
-
 def baseline_fleurs_evaluation(sample_sizes):
     languages_fleurs = ["de_de", "lt_lt", "sv_se", "pl_pl", "ru_ru"]
     for fl_lang in languages_fleurs:
         for size in sample_sizes:
             fl_dataset = load_dataset("google/fleurs", fl_lang, split=f"test[:{size}]", download_mode="reuse_dataset_if_exists")
             evaluate(fl_dataset, size, "transcription", f"Baseline FLEURS {fl_lang} for {size} samples")
+
 def retrain_model(csv_path, sample_sizes=[10, 100, 1000]):
-    baseline_evaluation(csv_path, sample_sizes)  # Pre-training evaluation on CSV data
-    baseline_fleurs_evaluation(sample_sizes)  # Pre-training evaluation on FLEURS data
+    baseline_evaluation(csv_path, sample_sizes) 
+    baseline_fleurs_evaluation(sample_sizes) 
 
     df = pd.read_csv(csv_path)
     optimizer = torch.optim.AdamW(model.parameters(), lr=2e-5, weight_decay=0.0)
@@ -90,3 +88,5 @@ def retrain_model(csv_path, sample_sizes=[10, 100, 1000]):
 
 csv_path_de = "/proj/uppmax2024-2-2/tswa2641/de_whisper_transcriptions.csv"
 retrain_model(csv_path_de)
+
+
