@@ -49,7 +49,7 @@ for lang in languages:
 
 cv_validation_combined = concatenate_datasets(cv_validation_datasets)
 
-# Prepare data collator
+
 @dataclass
 class DataCollatorWithPadding:
     processor: Any
@@ -62,7 +62,7 @@ class DataCollatorWithPadding:
 
 data_collator = DataCollatorWithPadding(processor=processor)
 
-# Define compute metrics function for evaluation
+
 def compute_metrics(pred):
     pred_ids = pred.predictions
     label_ids = pred.label_ids
