@@ -30,7 +30,7 @@ dataset_names_configs = [
 
 combined_datasets = []
 for name, config in dataset_names_configs:
-    ds = load_dataset(name, config, split="train[:20000]", cache_dir=cache_dir, download_mode="force_redownload")
+    ds = load_dataset(name, config, split="train[:1000]", cache_dir=cache_dir, download_mode="force_redownload")
     text_key = "transcription" if name == "bond005/sova_rudevices" else "text"
     text_key = "sentence" if name in ["conversy/M-AILABS_de", "conversy/M-AILABS_pl"] else text_key
     processed_ds = ds.map(lambda x: preprocess_function(x, text_key=text_key), batched=True, remove_columns=ds.column_names)
