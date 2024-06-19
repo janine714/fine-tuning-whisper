@@ -6,10 +6,6 @@ from dataclasses import dataclass
 import os
 import jiwer
 
-
-cache_dir = "/proj/uppmax2024-2-2/tswa2641/huggingface"
-os.environ["TRANSFORMERS_CACHE"] = cache_dir
-
 feature_extractor = WhisperFeatureExtractor.from_pretrained("openai/whisper-large", cache_dir=cache_dir)
 tokenizer = WhisperTokenizer.from_pretrained("openai/whisper-large", cache_dir=cache_dir)
 processor = WhisperProcessor(feature_extractor=feature_extractor, tokenizer=tokenizer)
