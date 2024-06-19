@@ -8,8 +8,7 @@ from torch.optim.lr_scheduler import StepLR
 from jiwer import wer, cer
 from pathlib import Path
 
-cache_dir = "/proj/uppmax2024-2-2/tswa2641/huggingface"
-os.environ["TRANSFORMERS_CACHE"] = cache_dir
+
 
 model = WhisperForConditionalGeneration.from_pretrained("openai/whisper-medium").cuda()
 processor = WhisperProcessor.from_pretrained("openai/whisper-medium")
